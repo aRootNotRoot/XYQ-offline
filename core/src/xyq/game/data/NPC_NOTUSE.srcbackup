@@ -1,0 +1,232 @@
+package xyq.game.data;
+
+
+import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.ai.btree.BehaviorTree;
+
+import xyq.game.XYQGame;
+import xyq.game.stage.NPCActor;
+import xyq.game.stage.XYQMapActor;
+import xyq.system.ai.MapGraphPath;
+import xyq.system.ai.MapNode;
+
+public class NPC_NOTUSE implements Comparable<NPC_NOTUSE>{
+	XYQGame game;
+	public ShapeData shape;
+	int[] location;
+	int inMapID;
+	
+	/**NPC演员*/
+	public NPCActor actor;
+	public boolean canMove=true;
+	public MapGraphPath movingStep;
+	public int moveTargetX;
+	public int moveTargetY;
+	/**角色点击事件处理器*/
+	public NPCClickEventAdapter NCA;
+	/**角色AI*/
+	public BehaviorTree<NPC_NOTUSE> behaviorTree;
+	
+	
+	public NPC_NOTUSE(XYQGame game,String shapeName){
+		this.game=game;
+		this.shape=game.shapeManager.getShape(shapeName);
+		
+		location=new int[2];
+		actor=new NPCActor(game,shape,this);
+		actor.setPosition(1*20+10, 1*20+10);
+        //tt.setPosition(0, 0);
+		actor.setNPCFaceTo(0);
+		actor.switchStat(ShapeData.STAND);
+	}
+	public XYQGame inGame() {
+		return game;
+	}
+	public void setBehaviorTree(BehaviorTree<NPC_NOTUSE> tree) {
+		this.behaviorTree=tree;
+	}
+	public void setMoveTarget(int logicX, int logicY) {
+		moveTargetX=logicX;
+		moveTargetY=logicY;
+	}
+	public boolean isOnTarget() {
+		return (location[0]==moveTargetX)&&(location[1]==moveTargetY);
+	}
+	public String getCurrentStat(){
+		return actor.getCurrentAction();
+	}
+	public void setNPCFaceTo(int direct){
+		if(actor!=null)
+			actor.setNPCFaceTo(direct);
+	}
+	public void addClickEventListener(NPCClickEventAdapter nca){
+		this.NCA=nca;
+		
+	}
+	/**获取NPC目标移动位置，如果没有移动没有目标则返回null*/
+	public MapNode getMoveTarget(){
+		if(movingStep==null)
+			return null;
+		return movingStep.get(movingStep.getCount()-1);
+	}
+	public void setNPCPosition(int x,int y){
+		//setLogicXY(x, y);
+		location[0]=x;
+		location[1]=y;
+		actor.setPosition(x*20+10, y*20+10);
+	}
+	public void setNPCName(String name){
+		actor.setNPCName(name);
+	}
+	public void setNPCTitle(String title){
+		actor.setNPCTitle(title);
+	}
+	public void addThisNPC(XYQMapActor inMap){
+		inMap.addActor(actor);
+		this.inMapID=inMap.mapID;
+		inMap.addNPC(this);
+	}
+	
+	public void switchStat(String action){
+		actor.switchStat(action);
+	}
+	
+	public int getLogicX(){
+		return location[0];
+	}
+	public int getLogicY(){
+		return location[1];
+	}
+	void setLogicX(int x){
+		location[0]=x;
+		actor.setLogicXY(location[0],location[1]);
+	}
+	void setLogicY(int y){
+		location[1]=y;
+		actor.setLogicXY(location[0],location[1]);
+	}
+	public void setLogicXY(int x,int y){
+		if(x>inMap().maxLocX)
+			x=inMap().maxLocX-1;
+		if(y>inMap().maxLocY)
+			y=inMap().maxLocY-1;
+		if(x<0)
+			x=0;
+		if(y<0)
+			y=0;
+		if(inMap().getMapData(x,y)==1){
+			if(game.is_Debug){
+				Gdx.app.error("[ XYQ ]","[NPC] 设定的坐标是不可到达的点："+x+","+y);
+				Gdx.app.error("[ XYQ ]","[NPC] 设定的坐标对应的地图值为："+inMap().getMapData(x,y));
+			}
+			return;
+		}
+		/*
+		else if(inMap().getMapData(x,y)==2){
+			int trans[]=game.db.loadMapTransConfig(getInMapID(),x,y);
+			if(trans[0]==-1||trans[1]==-1||trans[2]==-1){
+				if(game.is_Debug)
+					Gdx.app.error("[ XYQ ]","[Player] 传送失败：索引不对或数据库里面找不到传送数据："+trans[1]+","+ trans[2]+"@"+trans[0]+"号地图");
+			}
+			else{
+				if(!game.maps.isMapChanging())
+					game.maps.switchMap(trans[0], trans[1], trans[2]);
+			}
+		}
+		*/
+		location[0]=x;
+		location[1]=y;
+		actor.setLogicXY(location[0],location[1]);
+	}
+	private XYQMapActor inMap() {
+		return game.maps.getMap(getInMapID());
+	}
+
+	public String name() {
+		return actor.getNPCName();
+	}
+	public void say(String string) {
+		actor.say(string);
+		if(game.is_Debug){
+			Gdx.app.log("[ XYQ ]", "[ NPC ] -> "+name()+"说:"+string);
+		}
+	}
+	void updateMovingFaceTo(){
+		if(movingStep==null)
+			return;
+		for(int i=0;i<movingStep.getCount();i++){
+			MapNode point=movingStep.get(i);
+			if(point.x==location[0]&&point.y==location[1]){
+				if(i<movingStep.getCount()-1){
+					int nextIndex=i+1;
+					MapNode nextPo=movingStep.get(nextIndex);
+					int dir=game.ls.ifm.MAP_getTwoMapPointDiectInt(shape,point, nextPo);
+					if(dir==actor.getNPCFaceTo())
+						return;
+					if(game.is_Debug)
+						Gdx.app.log("[ XYQ ]","[NPC] -> 移动中，自动设定朝向："+dir+" -> from "+point.x+","+point.y+" to "+nextPo.x+","+nextPo.y);
+					actor.setNPCFaceTo(dir);
+					return;
+				}
+			}
+		}
+	}
+	void updateLogicPosByXY(){
+		setLogicXY((int)(actor.getX()/20),(int)(actor.getY()/20));
+	}
+	public void updateXYByLogicXY(){
+		actor.setX(getLogicX()*20+10);
+		actor.setY(getLogicY()*20+10);
+	}
+	public int getInMapXByLogic(){
+		return  getLogicX()*20+10;
+	}
+	public int getInMapYByLogic(){
+		return  getLogicY()*20+10;
+	}
+	public int getInMapID(){
+		return inMapID;
+	}
+	public void setInMapID(int id){
+		inMapID=id;
+	}
+	public void update(float deltaTime) {
+		updateLogicPosByXY();
+		updateMovingFaceTo();
+		
+	}
+	/**按照Y坐标排序（将Y坐标更高的排前面）*/
+	@Override
+	public int compareTo(NPC_NOTUSE arg0) {
+		return arg0.getLogicY()-getLogicY();
+	}
+	public class Shape {
+		/**东南朝向0*/
+		public final static int SouthEast=0;
+		/**西南朝向1*/
+		public final static int SouthWest=1;
+		/**西北朝向2*/
+		public final static int NorthWest=2;
+		/**东北朝向3*/
+		public final static int NorthEast=3;
+		/**南朝向4*/
+		public final static int South=4;
+		/**西朝向5*/
+		public final static int West=5;
+		/**北朝向6*/
+		public final static int North=6;
+		/**东朝向7*/
+		public final static int East=7;
+		
+		/**静立外形0*/
+		public final static int STAND=0;
+		/**行走外形1*/
+		public final static int WALK=1;
+	}
+	
+	
+	
+	
+	
+}
+
